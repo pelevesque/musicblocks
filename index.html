@@ -8,19 +8,94 @@
   </head>
   <body>
     <script>
+      /*--------------------------------------------------------------
+        Data Structure
+
+        Note Symbols:
+          _ prefix: Rest.
+          | prefix: Put a note separator at the beginning of the note.
+          ~ suffix: Connect through measure to next note.
+      --------------------------------------------------------------*/
+      const data = {
+        svg: {
+          id: "svg",
+          w: 240,
+          h: 120,
+          padding: 10,
+          border: "1px solid #666",
+          background: "white",
+        },
+        measures: {
+          verticalPadding: 25,
+          h: 100,
+          beat: {
+            structure: [7, 4],
+            w: 10,
+          },
+          zebraBackground: ["#efefef", "#e5e5e5"],
+          bar: {
+            w: 2,
+            color: "black",
+          },
+        },
+        labels: {
+          w: 40,
+          yOffset: 3,
+          font: {
+            family: "arial",
+            size: "12px",
+          },
+          color: "black",
+        },
+        notes: {
+          h: 12,
+          separator: {
+            w: 1,
+            color: "black",
+          },
+        },
+        instruments: [
+          {
+            label: "hi-hat",
+            color: "#2acaea",
+            notes: [
+              ["_50", "50~"],
+              ["50", "_50"],
+            ],
+          },
+          {
+            label: "snare",
+            color: "#00a86b",
+            notes: [
+              ["33.3", "|33.3", "|33.3"],
+              ["_66.6", "33.3"],
+            ],
+          },
+          {
+            label: "bass",
+            color: "#dfbd46",
+            notes: [
+              ["25", "|25", "_25", "25"],
+              ["25", "_75"],
+            ],
+          },
+        ],
+      }
+
+      /*--------------------------------------------------------------
+        Functions
+      --------------------------------------------------------------*/
       const svgns = "http://www.w3.org/2000/svg"
 
       function createSVG(id, w, h, background, border) {
-        const svg = document.createElementNS(svgns, "svg")
-        svg.setAttribute("id", id)
-        svg.setAttribute("width", w)
-        svg.setAttribute("height", h)
-        svg.style.background = background
-        svg.style.border = border
-        return svg
+        const e = document.createElementNS(svgns, "svg")
+        e.setAttribute("id", id)
+        e.setAttribute("width", w)
+        e.setAttribute("height", h)
+        e.style.background = background
+        e.style.border = border
+        return e
       }
-
-      const svg = createSVG("svg", 298, 100, "#ffffff", "1px solid black")
 
       function line(x1, y1, x2, y2, stroke, strokeWidth) {
         const e = document.createElementNS(svgns, "line")
@@ -43,82 +118,166 @@
         return e
       }
 
-      function text(text, x, y, fontSize, fontFamily) {
+      function text(text, x, y, fontSize, fontFamily, fill) {
         const e = document.createElementNS(svgns, "text")
         e.textContent = text
         e.setAttribute("x", x)
         e.setAttribute("y", y)
         e.setAttribute("font-size", fontSize)
         e.setAttribute("font-family", fontFamily)
+        e.setAttribute("fill", fill)
         return e
       }
 
-      /* measureWidth must be divisible by 4 */
-      function zebraize(xStart, y1, y2, measureWidth, c1, c2) {
-        const w = measureWidth / 4
-        const h = y2 - y1
-        for (let i = 0; i < 4; i++) {
-          const x = xStart + (i * w)
-          const c = i % 2 ? c1 : c2
-          const e = rect(x, y1, w, h, c)
+      function getNumBeats() {
+        return data.measures.beat.structure.reduce(
+          (count, n) => count + n, 0
+        )
+      }
+
+      function createZebraBackground() {
+        const xOffset = data.svg.padding + data.labels.w
+        const y = data.svg.padding
+        const w = data.measures.beat.w
+        const h = data.measures.h
+        for (let i = 0; i < getNumBeats(); i++) {
+          const x = xOffset + (data.measures.beat.w * i)
+          const fill = data.measures.zebraBackground[i % 2]
+          const e = rect(x, y, w, h, fill)
           svg.appendChild(e)
         }
       }
 
-      function label(t, x, y) {
-        const e = text(t, x, y, "13px", "arial")
-        svg.appendChild(e)
+      function getSpaceBetweenInstruments() {
+        const totalSpace = data.measures.h - (data.measures.verticalPadding * 2)
+        return Math.floor(totalSpace / (data.instruments.length - 1))
       }
 
-      function measureLine(x, y1, y2, c) {
-        const e = line(x, y1, x, y2, c, 1)
-        svg.appendChild(e)
+      function createLabels() {
+        const xOffset = data.svg.padding
+        const yOffset = data.svg.padding + data.measures.verticalPadding + data.labels.yOffset
+        const fontSize = data.labels.font.size
+        const fontFamily = data.labels.font.family
+        const fill = data.labels.color
+        const spaceBetweenInstruments = getSpaceBetweenInstruments()
+        data.instruments.forEach((instrument, i) => {
+          const t = instrument.label
+          const y = yOffset + (spaceBetweenInstruments * i)
+          const e = text(t, xOffset, y, fontSize, fontFamily, fill)
+          svg.appendChild(e)
+        })
       }
 
-      function note(x, y, w, h, c) {
-        const x2 = x + w
-        const e = line(x, y, x2, y, c, h)
-        svg.appendChild(e)
+      function createNotes() {
+        const connectors = []
+        const xOffset = data.svg.padding + data.labels.w
+        const yOffset = data.svg.padding + data.measures.verticalPadding
+        const noteHeight = data.notes.h
+        const spaceBetweenInstruments = getSpaceBetweenInstruments()
+        for (let i = 0; i < data.instruments.length; i++) {
+          let needle = 0
+          const y = yOffset + (spaceBetweenInstruments * i)
+          const color = data.instruments[i].color
+          for (let j = 0; j < data.instruments[i].notes.length; j++) {
+            const numMeasureBeats = data.measures.beat.structure[j]
+            const measureWidth = numMeasureBeats * data.measures.beat.w
+            for (let k = 0; k < data.instruments[i].notes[j].length; k++) {
+              let percentage
+              let separator = false
+              let connector = false
+              let note = data.instruments[i].notes[j][k]
+              // Rest.
+              if (note.charAt(0) === '_') {
+                percentage = note.substr(1)
+                needle += measureWidth * (percentage / 100)
+              }
+              // Note.
+              else {
+                if (note.charAt(0) === '|') {
+                  note = note.substr(1)
+                  separator = true
+                }
+                if (note.charAt(note.length - 1) === '~') {
+                  note = note.substr(0, note.length - 1)
+                  connector = true
+                }
+                // Draw note.
+                percentage = note
+                const x1 = Math.round(xOffset + needle)
+                needle += measureWidth * (percentage / 100)
+                const x2 = Math.round(xOffset + needle)
+                const e = line(x1, y, x2, y, color, noteHeight)
+                svg.appendChild(e)
+                // Draw separator.
+                if (separator) {
+                  const x2 = x1 + data.notes.separator.w
+                  const color = data.notes.separator.color
+                  const e = line(x1, y, x2, y, color, noteHeight)
+                  svg.appendChild(e)
+                }
+                // Store connector for later.
+                if (connector) {
+                  const x2 = x1 + data.measures.bar.w
+                  let connector = {
+                    instrumentNumber: i,
+                    measureNumber: j,
+                    y: y,
+                  }
+                  connectors.push(connector)
+                }
+              }
+            }
+          }
+        }
+        return connectors
       }
 
-      function noteSeparator(x, y, h, c) {
-        const e = line(x, y, x + 1, y, c, h)
+      function createMeasureLines(connectors) {
+        xOffset = data.svg.padding + data.labels.w
+        const y1 = data.svg.padding
+        const y2 = y1 + data.measures.h
+        let c = data.measures.bar.color
+        let w = data.measures.bar.w
+        let beatCount = 0
+        let x = xOffset
+        const e = line(x, y1, x, y2, c, w)
         svg.appendChild(e)
+        for (let i = 0; i < data.measures.beat.structure.length; i++) {
+          beatCount += data.measures.beat.structure[i]
+          x = xOffset + (beatCount * data.measures.beat.w)
+          const e = line(x, y1, x, y2, c, w)
+          svg.appendChild(e)
+          for (let j = 0; j < connectors.length; j++) {
+            if (connectors[j].measureNumber === i) {
+              const e = line(
+                x - 2, // 2 is magical
+                connectors[j].y,
+                x + data.measures.bar.w,
+                connectors[j].y,
+                data.instruments[connectors[j].instrumentNumber].color,
+                data.notes.h
+              )
+              svg.appendChild(e)
+            }
+          }
+        }
       }
 
-      function noteConnector(x, y, w, h, c) {
-        const x2 = x + w
-        const e = line(x, y, x2, y, c, h)
-        svg.appendChild(e)
-      }
+      /*--------------------------------------------------------------
+        Main
+      --------------------------------------------------------------*/
+      const svg = createSVG(
+        data.svg.id,
+        data.svg.w,
+        data.svg.h,
+        data.svg.background,
+        data.svg.border
+      )
 
-      zebraize(75,  20, 90, 100, "#f5f5f5", "#e5e5e5")
-      zebraize(175, 20, 90, 100, "#f5f5f5", "#e5e5e5")
-
-      label("label 1", 20, 34)
-      note(125, 30, 50, 6, "orange")
-      note(175, 30, 50, 6, "orange")
-
-      label("label 2", 20, 59)
-      note(75,  55, 33, 6, "pink")
-      note(108, 55, 33, 6, "pink")
-      noteSeparator(108, 55, 6, "black")
-      note(141, 55, 33, 6, "pink")
-      noteSeparator(141, 55, 6, "black")
-      note(241, 55, 33, 6, "pink")
-
-      label("label 3", 20, 84)
-      note(75,  80, 25, 6, "yellow")
-      note(100, 80, 25, 6, "yellow")
-      noteSeparator(100, 80, 6, "black")
-      note(150, 80, 25, 6, "yellow")
-      note(175, 80, 25, 6, "yellow")
-
-      measureLine(75,  20, 90, "black")
-      measureLine(175, 20, 90, "black")
-      measureLine(275, 20, 90, "black")
-
-      noteConnector(174, 30, 2, 2, "orange")
+      createZebraBackground()
+      createLabels()
+      const connectors = createNotes()
+      createMeasureLines(connectors)
 
       document.body.appendChild(svg)
     </script>
