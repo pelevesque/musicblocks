@@ -4,291 +4,324 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="X-UA-Compatible" content="ie=edge">
-    <title>musicblocks</title>
+    <title>Music Blocks</title>
   </head>
   <body>
     <script>
-      /*--------------------------------------------------------------
-        Provided Data
-      --------------------------------------------------------------*/
-      const providedData = {
-        instruments: [
-          {
-            label: "hi-hat",
-            color: "#2acaea",
-            notes: [
-              ["_50", "50~"],
-              ["50", "_50"],
-            ],
-          },
-          {
-            label: "snare",
-            color: "#00a86b",
-            notes: [
-              ["33.3", "|33.3", "|33.3"],
-              ["_66.6", "33.3"],
-            ],
-          },
-          {
-            label: "bass",
-            color: "#dfbd46",
-            notes: [
-              ["25", "|25", "_25", "25"],
-              ["25", "_75"],
-            ],
-          },
-        ],
-      }
 
       /*--------------------------------------------------------------
-        Defaults
+        Class
       --------------------------------------------------------------*/
-      const defaults = {
-        svg: {
-          id: "svg",
-          w: 240,
-          h: 120,
-          padding: 10,
-          border: "1px solid #666",
-          background: "white",
-        },
-        measures: {
-          verticalPadding: 25,
-          h: 100,
-          beat: {
-            structure: [7, 4],
-            w: 10,
+      class MusicBlocks {
+
+        constructor(instruments, options = {}) {
+          this.instruments = instruments
+          this.o = this.deepMerge(this.defaultOptions, options)
+          this.numBeats = this.getNumBeats()
+          this.instrumentMargin = this.getInstrumentMargin()
+          this.svgns = "http://www.w3.org/2000/svg"
+          this.svg = null
+          this.crossMeasureNoteConnectors = []
+        }
+
+        defaultOptions = {
+          svg: {
+            id: "svg",
+            w: 240,
+            h: 120,
+            padding: 10,
+            border: "1px solid #666",
+            background: "#f5f5f5",
           },
-          zebraBackground: ["#efefef", "#e5e5e5"],
-          bar: {
-            w: 2,
+          measures: {
+            verticalPadding: 25,
+            h: 100,
+            beat: {
+              structure: [4, 4],
+              w: 10,
+            },
+            zebraBackground: ["#efefef", "#e5e5e5"],
+            bar: {
+              w: 2,
+              color: "black",
+            },
+          },
+          labels: {
+            w: 40,
+            yOffset: 3,
+            font: {
+              family: "Helvetica, Arial, sans-serif",
+              size: "12px",
+            },
             color: "black",
           },
-        },
-        labels: {
-          w: 40,
-          yOffset: 3,
-          font: {
-            family: "arial",
-            size: "12px",
+          notes: {
+            h: 12,
+            separator: {
+              w: 1,
+              color: "black",
+            },
           },
-          color: "black",
-        },
-        notes: {
-          h: 12,
-          separator: {
-            w: 1,
-            color: "black",
-          },
-        },
+        }
+
+        deepMerge(o1, o2) {
+          const merged = {...o1, ...o2}
+          for (const key of Object.keys(o2)) {
+            if (
+              typeof o1[key] === 'object' && o1[key] !== null &&
+              typeof o2[key] === 'object' && o2[key] !== null
+            ) {
+              merged[key] = this.deepMerge(o1[key], o2[key])
+            }
+          }
+          return merged
+        }
+
+        getNumBeats() {
+          return this.o.measures.beat.structure.reduce(
+            (count, n) => count + n, 0
+          )
+        }
+
+        getInstrumentMargin() {
+          const h = this.o.measures.h
+          const verticalPadding = this.o.measures.verticalPadding
+          const instrumentLength = this.instruments.length
+          const totalSpace = h - (verticalPadding * 2)
+          return Math.floor(totalSpace / (instrumentLength - 1))
+        }
+
+        initSVG(id, w, h, background, border) {
+          const e = document.createElementNS(this.svgns, "svg")
+          e.setAttribute("id", id)
+          e.setAttribute("width", w)
+          e.setAttribute("height", h)
+          e.style.background = background
+          e.style.border = border
+          return e
+        }
+
+        line(x1, y1, x2, y2, stroke, strokeWidth) {
+          const e = document.createElementNS(this.svgns, "line")
+          e.setAttribute("x1", x1)
+          e.setAttribute("y1", y1)
+          e.setAttribute("x2", x2)
+          e.setAttribute("y2", y2)
+          e.setAttribute("stroke", stroke)
+          e.setAttribute("stroke-width", strokeWidth)
+          return e
+        }
+
+        rect(x, y, w, h, fill) {
+          const e = document.createElementNS(this.svgns, "rect")
+          e.setAttribute("x", x)
+          e.setAttribute("y", y)
+          e.setAttribute("width",  w)
+          e.setAttribute("height", h)
+          e.setAttribute("fill", fill)
+          return e
+        }
+
+        text(text, x, y, fontSize, fontFamily, fill) {
+          const e = document.createElementNS(this.svgns, "text")
+          e.textContent = text
+          e.setAttribute("x", x)
+          e.setAttribute("y", y)
+          e.setAttribute("font-size", fontSize)
+          e.setAttribute("font-family", fontFamily)
+          e.setAttribute("fill", fill)
+          return e
+        }
+
+        drawZebraBackground() {
+          const xOffset = this.o.svg.padding + this.o.labels.w
+          const y = this.o.svg.padding
+          const w = this.o.measures.beat.w
+          const h = this.o.measures.h
+          for (let i = 0; i < this.numBeats; i++) {
+            const x = xOffset + (w * i)
+            const fill = this.o.measures.zebraBackground[i % 2]
+            const e = this.rect(x, y, w, h, fill)
+            this.svg.appendChild(e)
+          }
+        }
+
+        drawLabels() {
+          const xOffset = this.o.svg.padding
+          const yOffset =
+           this.o.svg.padding +
+           this.o.measures.verticalPadding +
+           this.o.labels.yOffset
+          const fontSize = this.o.labels.font.size
+          const fontFamily = this.o.labels.font.family
+          const fill = this.o.labels.color
+          this.instruments.forEach((instrument, i) => {
+            const y = yOffset + (this.instrumentMargin * i)
+            const e = this.text(
+              instrument.label,
+              xOffset,
+              y,
+              fontSize,
+              fontFamily,
+              fill,
+            )
+            this.svg.appendChild(e)
+          })
+        }
+
+        drawNotes() {
+          const xOffset = this.o.svg.padding + this.o.labels.w
+          const yOffset =
+           this.o.svg.padding +
+           this.o.measures.verticalPadding
+          const noteHeight = this.o.notes.h
+          this.instruments.forEach((instrument, i) => {
+            let needle = 0
+            const y = yOffset + (this.instrumentMargin * i)
+            const color = instrument.color
+            instrument.notes.forEach((measureNotes, j) => {
+              const numMeasureBeats = this.o.measures.beat.structure[j]
+              const measureWidth = numMeasureBeats * this.o.measures.beat.w
+              measureNotes.forEach(note => {
+                let percentage
+                let separator = false
+                let connector = false
+                // Rest.
+                if (note.charAt(0) === '_') {
+                  percentage = note.substr(1)
+                  needle += measureWidth * (percentage / 100)
+                }
+                // Note.
+                else {
+                  if (note.charAt(0) === '|') {
+                    note = note.substr(1)
+                    separator = true
+                  }
+                  if (note.charAt(note.length - 1) === '~') {
+                    note = note.substr(0, note.length - 1)
+                    connector = true
+                  }
+                  // Draw note.
+                  percentage = note
+                  const x1 = Math.round(xOffset + needle)
+                  needle += measureWidth * (percentage / 100)
+                  const x2 = Math.round(xOffset + needle)
+                  const e = this.line(x1, y, x2, y, color, noteHeight)
+                  this.svg.appendChild(e)
+                  // Draw separator.
+                  if (separator) {
+                    const x2 = x1 + this.o.notes.separator.w
+                    const color = this.o.notes.separator.color
+                    const e = this.line(x1, y, x2, y, color, noteHeight)
+                    this.svg.appendChild(e)
+                  }
+                  // Save connector.
+                  if (connector) {
+                    const connector = {
+                      instrumentNumber: i,
+                      measureNumber: j,
+                      y: y,
+                    }
+                    this.crossMeasureNoteConnectors.push(connector)
+                  }
+                }
+              })
+            })
+          })
+        }
+
+        drawMeasureLines() {
+          const xOffset = this.o.svg.padding + this.o.labels.w
+          const y1 = this.o.svg.padding
+          const y2 = y1 + this.o.measures.h
+          const c = this.o.measures.bar.color
+          const w = this.o.measures.bar.w
+          const e = this.line(xOffset, y1, xOffset, y2, c, w)
+          this.svg.appendChild(e)
+          let beatCount = 0
+          this.o.measures.beat.structure.forEach((numMeasureBeats, i) => {
+            beatCount += numMeasureBeats
+            const x = xOffset + (beatCount * this.o.measures.beat.w)
+            const e = this.line(x, y1, x, y2, c, w)
+            this.svg.appendChild(e)
+            this.crossMeasureNoteConnectors.forEach(connector => {
+              if (connector.measureNumber === i) {
+                const e = this.line(
+                  x - 2, // 2 is magical.
+                  connector.y,
+                  x + this.o.measures.bar.w,
+                  connector.y,
+                  this.instruments[connector.instrumentNumber].color,
+                  this.o.notes.h,
+                )
+                this.svg.appendChild(e)
+              }
+            })
+          })
+        }
+
+        render() {
+          this.svg = this.initSVG(
+            this.o.svg.id,
+            this.o.svg.w,
+            this.o.svg.h,
+            this.o.svg.background,
+            this.o.svg.border,
+          )
+          this.drawZebraBackground()
+          this.drawLabels()
+          this.drawNotes()
+          this.drawMeasureLines()
+          return this.svg
+        }
       }
 
       /*--------------------------------------------------------------
         Data
       --------------------------------------------------------------*/
-      const data = {
-        ...providedData,
-        ...defaults,
-      }
+      const instruments = [
+        {
+          label: "hi-hat",
+          color: "#2acaea",
+          notes: [
+            ["_50", "50~"],
+            ["50", "_50"],
+          ],
+        },
+        {
+          label: "snare",
+          color: "#00a86b",
+          notes: [
+            ["33.3", "|33.3", "|33.3"],
+            ["_66.6", "33.3"],
+          ],
+        },
+        {
+          label: "bass",
+          color: "#dfbd46",
+          notes: [
+            ["25", "|25", "_25", "25"],
+            ["25", "_75"],
+          ],
+        },
+      ]
 
-      /*--------------------------------------------------------------
-        Functions
-      --------------------------------------------------------------*/
-      const svgns = "http://www.w3.org/2000/svg"
-
-      function createSVG(id, w, h, background, border) {
-        const e = document.createElementNS(svgns, "svg")
-        e.setAttribute("id", id)
-        e.setAttribute("width", w)
-        e.setAttribute("height", h)
-        e.style.background = background
-        e.style.border = border
-        return e
-      }
-
-      function line(x1, y1, x2, y2, stroke, strokeWidth) {
-        const e = document.createElementNS(svgns, "line")
-        e.setAttribute("x1", x1)
-        e.setAttribute("y1", y1)
-        e.setAttribute("x2", x2)
-        e.setAttribute("y2", y2)
-        e.setAttribute("stroke", stroke)
-        e.setAttribute("stroke-width", strokeWidth)
-        return e
-      }
-
-      function rect(x, y, w, h, fill) {
-        const e = document.createElementNS(svgns, "rect")
-        e.setAttribute("x", x)
-        e.setAttribute("y", y)
-        e.setAttribute("width",  w)
-        e.setAttribute("height", h)
-        e.setAttribute("fill", fill)
-        return e
-      }
-
-      function text(text, x, y, fontSize, fontFamily, fill) {
-        const e = document.createElementNS(svgns, "text")
-        e.textContent = text
-        e.setAttribute("x", x)
-        e.setAttribute("y", y)
-        e.setAttribute("font-size", fontSize)
-        e.setAttribute("font-family", fontFamily)
-        e.setAttribute("fill", fill)
-        return e
-      }
-
-      function getNumBeats() {
-        return data.measures.beat.structure.reduce(
-          (count, n) => count + n, 0
-        )
-      }
-
-      function createZebraBackground() {
-        const xOffset = data.svg.padding + data.labels.w
-        const y = data.svg.padding
-        const w = data.measures.beat.w
-        const h = data.measures.h
-        for (let i = 0; i < getNumBeats(); i++) {
-          const x = xOffset + (data.measures.beat.w * i)
-          const fill = data.measures.zebraBackground[i % 2]
-          const e = rect(x, y, w, h, fill)
-          svg.appendChild(e)
-        }
-      }
-
-      function getSpaceBetweenInstruments() {
-        const totalSpace = data.measures.h - (data.measures.verticalPadding * 2)
-        return Math.floor(totalSpace / (data.instruments.length - 1))
-      }
-
-      function createLabels() {
-        const xOffset = data.svg.padding
-        const yOffset = data.svg.padding + data.measures.verticalPadding + data.labels.yOffset
-        const fontSize = data.labels.font.size
-        const fontFamily = data.labels.font.family
-        const fill = data.labels.color
-        const spaceBetweenInstruments = getSpaceBetweenInstruments()
-        data.instruments.forEach((instrument, i) => {
-          const t = instrument.label
-          const y = yOffset + (spaceBetweenInstruments * i)
-          const e = text(t, xOffset, y, fontSize, fontFamily, fill)
-          svg.appendChild(e)
-        })
-      }
-
-      function createNotes() {
-        const connectors = []
-        const xOffset = data.svg.padding + data.labels.w
-        const yOffset = data.svg.padding + data.measures.verticalPadding
-        const noteHeight = data.notes.h
-        const spaceBetweenInstruments = getSpaceBetweenInstruments()
-        for (let i = 0; i < data.instruments.length; i++) {
-          let needle = 0
-          const y = yOffset + (spaceBetweenInstruments * i)
-          const color = data.instruments[i].color
-          for (let j = 0; j < data.instruments[i].notes.length; j++) {
-            const numMeasureBeats = data.measures.beat.structure[j]
-            const measureWidth = numMeasureBeats * data.measures.beat.w
-            for (let k = 0; k < data.instruments[i].notes[j].length; k++) {
-              let percentage
-              let separator = false
-              let connector = false
-              let note = data.instruments[i].notes[j][k]
-              // Rest.
-              if (note.charAt(0) === '_') {
-                percentage = note.substr(1)
-                needle += measureWidth * (percentage / 100)
-              }
-              // Note.
-              else {
-                if (note.charAt(0) === '|') {
-                  note = note.substr(1)
-                  separator = true
-                }
-                if (note.charAt(note.length - 1) === '~') {
-                  note = note.substr(0, note.length - 1)
-                  connector = true
-                }
-                // Draw note.
-                percentage = note
-                const x1 = Math.round(xOffset + needle)
-                needle += measureWidth * (percentage / 100)
-                const x2 = Math.round(xOffset + needle)
-                const e = line(x1, y, x2, y, color, noteHeight)
-                svg.appendChild(e)
-                // Draw separator.
-                if (separator) {
-                  const x2 = x1 + data.notes.separator.w
-                  const color = data.notes.separator.color
-                  const e = line(x1, y, x2, y, color, noteHeight)
-                  svg.appendChild(e)
-                }
-                // Store connector for later.
-                if (connector) {
-                  const x2 = x1 + data.measures.bar.w
-                  let connector = {
-                    instrumentNumber: i,
-                    measureNumber: j,
-                    y: y,
-                  }
-                  connectors.push(connector)
-                }
-              }
-            }
-          }
-        }
-        return connectors
-      }
-
-      function createMeasureLines(connectors) {
-        xOffset = data.svg.padding + data.labels.w
-        const y1 = data.svg.padding
-        const y2 = y1 + data.measures.h
-        const c = data.measures.bar.color
-        const w = data.measures.bar.w
-        let beatCount = 0
-        let x = xOffset
-        const e = line(x, y1, x, y2, c, w)
-        svg.appendChild(e)
-        for (let i = 0; i < data.measures.beat.structure.length; i++) {
-          beatCount += data.measures.beat.structure[i]
-          x = xOffset + (beatCount * data.measures.beat.w)
-          const e = line(x, y1, x, y2, c, w)
-          svg.appendChild(e)
-          for (let j = 0; j < connectors.length; j++) {
-            if (connectors[j].measureNumber === i) {
-              const e = line(
-                x - 2, // 2 is magical
-                connectors[j].y,
-                x + data.measures.bar.w,
-                connectors[j].y,
-                data.instruments[connectors[j].instrumentNumber].color,
-                data.notes.h
-              )
-              svg.appendChild(e)
-            }
-          }
-        }
+      const options = {
+        svg: {
+          background: "#ffcccc",
+        },
+        measures: {
+          verticalPadding: 20,
+        },
       }
 
       /*--------------------------------------------------------------
         Main
       --------------------------------------------------------------*/
-      const svg = createSVG(
-        data.svg.id,
-        data.svg.w,
-        data.svg.h,
-        data.svg.background,
-        data.svg.border
-      )
-
-      createZebraBackground()
-      createLabels()
-      const connectors = createNotes()
-      createMeasureLines(connectors)
-
+      const musicBlocks = new MusicBlocks(instruments, options)
+      const svg = musicBlocks.render()
       document.body.appendChild(svg)
+
     </script>
   </body>
 </html>
